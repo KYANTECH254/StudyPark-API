@@ -1,0 +1,320 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PlanType {
+  FREE
+  MONTHLY_PREMIUM
+  ANNUAL_PREMIUM
+  LIFETIME
+}
+
+enum SubStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  MPESA
+  CARD
+  PAYPAL
+  GOOGLE_PAY
+}
+
+enum NotificationType {
+  GENERAL
+  SYSTEM_UPDATE
+  PREMIUM_EXPIRY
+  DOCUMENT_UPLOADED
+  FAVORITE_UPDATE
+}
+
+model User {
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  fullName            String
+  password            String
+  university          String
+  universityId        String?
+  course              String?
+  yearOfStudy         Int?
+  documentsDownloaded Int       @default(0)
+  favoritesCount      Int       @default(0)
+  studyStreak         Int       @default(0)
+  documentsViewed     Int       @default(0)
+  
+  // Subscription Details
+  isPremium           Boolean   @default(false)
+  planType            PlanType  @default(FREE)
+  
+  // Admin
+  isAdmin             Boolean   @default(false)
+  isBlocked           Boolean   @default(false)
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  // Relations
+  sessions            Session[]
+  downloads           Download[]
+  favorites           Favorite[]
+  viewHistory         ViewHistory[]
+  subscriptions       Subscription[]
+  payments            Payment[]
+  notifications       Notification[]
+  createdAppNotifications AppNotification[] @relation("AppNotificationCreator")
+  appNotificationReads AppNotificationRead[]
+  uploadedDocuments   Document[] @relation("DocumentUploader")
+  ratings             Rating[]
+  universityRecord    University? @relation("UserUniversity", fields: [universityId], references: [id], onDelete: SetNull)
+
+  @@index([universityId])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  devicePublicKey String?
+  isActive  Boolean  @default(true)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Document {
+  id                String         @id @default(uuid())
+  title             String
+  description       String?
+  type              String         // "Past Paper", "CAT", "Notes"
+  documentTypeId    String?
+  category          String         // e.g., "Mathematics", "Computer Science"
+  categoryId        String?
+  university        String
+  universityId      String?
+  year              String         // Exam year, e.g., "2023"
+  status            String         @default("DRAFT")
+  fileUrl           String         // Public download URL
+  previewUrl        String?        // Public preview URL for in-app viewing
+  storageProvider   String?        // "GOOGLE_DRIVE" for managed files
+  storageAccountKey String?
+  storageFileId     String?
+  storageVisibility String?
+  rating            Float          @default(0.0)
+  downloadsCount    Int            @default(0)
+  viewsCount        Int            @default(0)
+  uploadedById      String?
+  uploadedBy        User?          @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedAt        DateTime       @default(now())
+  publishedAt       DateTime?
+  archivedAt        DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  
+  // Relations
+  downloads       Download[]
+  favorites       Favorite[]
+  views           ViewHistory[]
+  ratings         Rating[]
+  documentTypeRecord DocumentType? @relation("DocumentDocumentType", fields: [documentTypeId], references: [id], onDelete: SetNull)
+  categoryRecord     Category?     @relation("DocumentCategory", fields: [categoryId], references: [id], onDelete: SetNull)
+  universityRecord   University?   @relation("DocumentUniversity", fields: [universityId], references: [id], onDelete: SetNull)
+
+  @@index([storageProvider, storageAccountKey])
+  @@index([status, createdAt])
+  @@index([uploadedById, createdAt])
+  @@index([documentTypeId])
+  @@index([categoryId])
+  @@index([universityId])
+}
+
+model University {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  users       User[]     @relation("UserUniversity")
+  documents   Document[] @relation("DocumentUniversity")
+}
+
+model Category {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  documents   Document[] @relation("DocumentCategory")
+}
+
+model DocumentType {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  documents   Document[] @relation("DocumentDocumentType")
+}
+
+model Download {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, documentId])
+}
+
+model Favorite {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, documentId])
+}
+
+model ViewHistory {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+  viewedAt   DateTime @default(now())
+
+  @@unique([userId, documentId])
+}
+
+model Rating {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  rating     Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, documentId])
+  @@index([documentId])
+}
+
+model Subscription {
+  id            String     @id @default(uuid())
+  userId        String
+  user          User       @relation(fields: [userId], references: [id])
+  planType      PlanType
+  status        SubStatus  @default(ACTIVE)
+  startDate     DateTime   @default(now())
+  endDate       DateTime?  // Null for lifetime
+  paymentId     String?    @unique
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  amount        Float
+  currency      String        @default("KES")
+  method        PaymentMethod
+  planType      PlanType      @default(MONTHLY_PREMIUM)
+  status        PaymentStatus @default(PENDING)
+  transactionId String?       @unique
+  phoneNumber   String?
+  checkoutRequestId String?   @unique
+  merchantRequestId String?
+  mpesaReceiptNumber String?  @unique
+  accountReference String?
+  shortCodeType String?
+  resultCode    Int?
+  resultDesc    String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String?
+  user      User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      NotificationType @default(GENERAL)
+  isRead    Boolean          @default(false)
+  actionUrl String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([userId])
+}
+
+model AppNotification {
+  id          String                @id @default(cuid())
+  title       String
+  message     String
+  type        NotificationType      @default(GENERAL)
+  actionUrl   String?
+  createdById String?
+  createdBy   User?                 @relation("AppNotificationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  reads       AppNotificationRead[]
+
+  @@index([createdAt])
+  @@index([createdById])
+}
+
+model AppNotificationRead {
+  id                String           @id @default(cuid())
+  appNotificationId String
+  userId            String
+  readAt            DateTime?
+  deletedAt         DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  appNotification   AppNotification  @relation(fields: [appNotificationId], references: [id], onDelete: Cascade)
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([appNotificationId, userId])
+  @@index([userId, deletedAt])
+}
+
+model AppSettings {
+  id                   String   @id @default("default")
+  stkEnvironment       String   @default("sandbox")
+  stkShortCodeType     String   @default("paybill")
+  stkBusinessShortCode String   @default("")
+  stkAccountReference  String   @default("")
+  stkPasskey           String   @default("")
+  stkConsumerKey       String   @default("")
+  stkConsumerSecret    String   @default("")
+  stkCallbackUrl       String   @default("")
+  googleAccountKey     String   @default("default")
+  googleFolderId       String   @default("")
+  googleVisibility     String   @default("public")
+  googleCredentialsJson String  @default("")
+  aiProvider           String   @default("")
+  aiModel              String   @default("")
+  aiApiKey             String   @default("")
+  aiBaseUrl            String   @default("")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
